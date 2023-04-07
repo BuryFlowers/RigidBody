@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
@@ -20,7 +21,7 @@ int normal_offset = 0;
 vector<vec2> uv_queue;
 int uv_offset = 0;
 
-void load_obj_file(const char* filename, std::vector<triangle> indices_queue) {
+void load_obj_file(const char* filename, std::vector<triangle> &indices_queue) {
 
 	int position_count = 0;
 	int normal_count = 0;
@@ -128,7 +129,7 @@ void load_obj_file(const char* filename, std::vector<triangle> indices_queue) {
 
 					p[i] = position_offset + tmp - 1;
 
-					//get the normal index
+					//get the uv index
 					j++;
 					tmp = 0;
 					while (s[i][j] != '/' && s[i][j] != ' ' && j < strlen(s[i])) {
@@ -139,9 +140,9 @@ void load_obj_file(const char* filename, std::vector<triangle> indices_queue) {
 
 					}
 
-					if (s[i][j] == '/' && j < strlen(s[i])) n[i] = normal_offset + tmp - 1, j++;
+					if (s[i][j] == '/' && j < strlen(s[i])) t[i] = uv_offset + tmp - 1, j++;
 					
-					//get the uv index
+					//get the normal index
 					tmp = 0;
 					while (s[i][j] != '/' && s[i][j] != ' ' && j < strlen(s[i])) {
 
@@ -151,7 +152,7 @@ void load_obj_file(const char* filename, std::vector<triangle> indices_queue) {
 
 					}
 
-					if (s[i][j] == '/' && j < strlen(s[i])) t[i] = uv_offset + tmp - 1, j++;
+					n[i] = normal_offset + tmp - 1, j++;
 					tmp = 0;
 
 			}
