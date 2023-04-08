@@ -16,7 +16,7 @@ void main()
 
     gl_Position = projection * view * model * vec4(aPos, 1.0f);
     pos = vec3(model * vec4(aPos, 1.0f));
-    normal = vec3(transpose(inverse(model)) * vec4(aNormal, 1.0f));
+    normal =  vec3(vec4(aNormal, 1.0f) * inverse(model));
     albedo = aNormal;
     
 }

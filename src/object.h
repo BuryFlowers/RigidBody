@@ -2,8 +2,9 @@
 #ifndef OBJECT
 #define OBJECT
 
-#define epsilon 1e-2f
+#define epsilon 1e-1f
 #define elasticity 0.1f
+//#define AVERAGE_INTERSECTION_CHECK
 
 #include <iostream>
 #include <vector>
@@ -136,6 +137,8 @@ public:
 	bool CheckIntersection(Object o)
 	{
 	
+#ifdef AVERAGE_INTERSECTION_CHECK
+
 		std::vector<vec3> pointsInside;
 		pointsInside.clear();
 		vec3 delta_x = vec3(0);
@@ -239,6 +242,95 @@ public:
 		}
 
 		return false;
+
+#endif
+
+#ifndef AVERAGE_INTERSECTION_CHECK
+
+		bool isHit = false;
+		vec3 delta_x = vec3(0);
+		vec3 delta_v = vec3(0);
+		vec3 delta_w = vec3(0);
+		int pointsN = points.size();
+		for (int i = 0; i < pointsN; i++) 
+		{
+
+			vec3 Rri = GetRotation() * vec4((points[i] - c), 0.0f);
+			vec3 point = x + Rri;
+			bool isInside = true;
+			float distance;
+			vec3 normal;
+			int triangleN = o.GetSize();
+			for (int j = 0; j < triangleN; j++) 
+			{
+
+				triangle T = o.GetTriangle(j);
+				// get the triangle's plane normal
+				mat4 model = o.GetModel();
+;				vec3 t_normal = normal_queue[T.N_A()] + normal_queue[T.N_B()] + normal_queue[T.N_C()];
+				vec3 p = o.GetModel() * vec4(position_queue[T.P_A()], 1.0f);
+				t_normal = vec4(normalize(t_normal), 0.0f) * inverse(model);
+
+				float d = dot((point - p), t_normal);
+				// if the point intersects with the object
+				if (d < epsilon)
+				{
+
+					if (j == 0) distance = d, normal = t_normal;
+					else if (distance < d) distance = d, normal = t_normal;
+
+				}
+				else
+				{
+
+					isInside = false;
+					break;
+
+				}
+
+			}
+
+			if (isInside)
+			{
+
+				if (this->mass >= 2.0f && o.mass >= 2.0f)
+				{
+
+					printf("[Debug]bunny attacked!\n");
+
+				}
+				isHit = true;
+				x += (epsilon - distance) * normal;
+				vec3 vi = v + cross(w, Rri);
+				if (dot(vi, normal) <= 0) {
+
+					//printf("[Debug]intersected!\n");
+
+					vec3 viN = dot(vi, normal) * normal;
+					vec3 viT = vi - viN;
+
+					float e = elasticity;
+					//if (length(v) < 1.0f) e = 0.1f;
+					vec3 new_viN = -e * viN;
+					float a = max(0.0f, 1.0f - e * (1 + e) * length(viN) / length(viT));
+					vec3 new_viT = a * viT;
+
+					mat3 I_1 = mat3(inverse(I));
+					mat3 K = mat3(1.0f / mass) - GetMatrixProduct(Rri) * mat3(inverse(I)) * GetMatrixProduct(Rri);
+					vec3 j = inverse(K) * (new_viN + new_viT - vi);
+
+					v += j / mass;
+					w += mat3(inverse(I)) * cross(Rri, j);
+
+				}
+
+			}
+
+		}
+
+		return isHit;
+
+#endif
 
 	}
 
