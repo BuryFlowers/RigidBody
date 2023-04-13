@@ -100,10 +100,10 @@ int main()
     std::vector<Object> objects;
     std::vector<triangle> tmp;
     tmp.clear();
-    load_obj_file("bunny.obj", tmp);
-    for (int i = 1; i <= 2; i++) {
+    load_obj_file("cube.obj", tmp);
+    for (int i = 1; i <= 5; i++) {
 
-        Object cube(i * 3.0f, tmp, vec3(i * 3.0f, 8.0f, 0), vec3(i * 10.0f, i * 20.0f, i * 30.0f));
+        Object cube(i * 3.0f, tmp, vec3(i * 3.0f - 7.5f, 8.0f, 0), vec3(i * 10.0f, i * 20.0f, i * 30.0f));
         cube.SetGravity(true);
         objects.push_back(cube);
 

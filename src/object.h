@@ -245,7 +245,7 @@ public:
 
 #endif
 
-#ifndef AVERAGE_INTERSECTION_CHECK
+#ifdef AVERAGE_INTERSECTION_CHECK
 
 		bool isHit = false;
 		vec3 delta_x = vec3(0);
@@ -331,6 +331,143 @@ public:
 		return isHit;
 
 #endif
+
+		if (!this->GetGravity()) return false;
+		std::map<int, float> m_distance;
+		std::map<int, vec3> m_normal;
+
+		bool isHit = false;
+		vec3 delta_x = vec3(0);
+		vec3 delta_v = vec3(0);
+		vec3 delta_w = vec3(0);
+		int triangleN = triangles.size();
+		for (int i = 0; i < triangleN; i++)
+		{
+
+			int p[3];
+			p[0] = triangles[i].P_A();
+			p[1] = triangles[i].P_B();
+			p[2] = triangles[i].P_C();
+
+			for (int j = 0; j < 3; j++)
+			{
+
+				int oTriangleN = o.GetSize();
+				for (int k = 0; k < oTriangleN; k++)
+				{
+
+					vec3 Xa = GetModel() * vec4(position_queue[p[j]], 1.0f);
+					vec3 Xb = GetModel() * vec4(position_queue[p[(j + 1) % 3]], 1.0f);
+
+					triangle T = o.GetTriangle(k);
+					// get the triangle's plane normal
+					mat4 model = o.GetModel();
+					vec3 t_normal = normal_queue[T.N_A()] + normal_queue[T.N_B()] + normal_queue[T.N_C()];
+					t_normal = vec4(normalize(t_normal), 0.0f) * inverse(model);
+					vec3 X0 = o.GetModel() * vec4(position_queue[T.P_A()], 1.0f);
+					vec3 X1 = o.GetModel() * vec4(position_queue[T.P_B()], 1.0f);
+					vec3 X2 = o.GetModel() * vec4(position_queue[T.P_C()], 1.0f);
+
+					float t = -1.0f;
+					if (dot(Xa - Xb, t_normal) != 0.0f) t = dot(Xa - X0, t_normal) / dot(Xa - Xb, t_normal);
+
+					if (t >= 0 && t <= 1.0f)
+					{
+
+						vec3 Xt = (1 - t) * Xa + t * Xb;
+						vec3 t1 = cross(X0 - Xt, X1 - Xt);
+						vec3 t2 = cross(X1 - Xt, X2 - Xt);
+						if (dot(t1, t2) < 0) continue;
+						vec3 t3 = cross(X2 - Xt, X0 - Xt);
+						if (dot(t1, t3) < 0 || dot(t2, t3) < 0) continue;
+
+						isHit = true;
+						if (dot((Xa - X0), t_normal) < dot((Xb - X0), t_normal))
+						{
+							
+							if (m_distance.count(p[j]) == 0)
+							{
+
+								m_distance[p[j]] = dot((Xa - X0), t_normal);
+								m_normal[p[j]] = t_normal;
+
+							}
+							else if (m_distance[p[j]] < dot((Xa - X0), t_normal))
+							{
+
+								m_distance[p[j]] = dot((Xa - X0), t_normal);
+								m_normal[p[j]] = t_normal;
+
+							}
+
+						}
+						else
+						{
+
+							if (m_distance.count(p[(j + 1) % 3]) == 0)
+							{
+
+								m_distance[p[(j + 1) % 3]] = dot((Xb - X0), t_normal);
+								m_normal[p[(j + 1) % 3]] = t_normal;
+
+							}
+							else if (m_distance[p[(j + 1) % 3]] < dot((Xb - X0), t_normal))
+							{
+
+								m_distance[p[(j + 1) % 3]] = dot((Xb - X0), t_normal);
+								m_normal[p[(j + 1) % 3]] = t_normal;
+
+							}
+
+						}
+						
+
+					}
+
+				}
+
+			}
+
+		}
+
+		auto i = m_distance.begin();
+		auto j = m_normal.begin();
+		for (; i != m_distance.end(); i++, j++)
+		{
+
+			int p = i->first;
+			vec3 Rri = GetRotation() * vec4(position_queue[p] - c, 0.0f);
+			float distance = i->second;
+			vec3 normal = j->second;
+			x -= distance * normal;
+			vec3 vi = v + cross(w, Rri);
+			if (dot(vi, normal) <= 0) {
+
+				//printf("[Debug]intersected!\n");
+
+				vec3 viN = dot(vi, normal) * normal;
+				vec3 viT = vi - viN;
+
+				float e = elasticity;
+				//if (length(v) < 1.0f) e = 0.1f;
+				vec3 new_viN = -e * viN;
+				float a = max(0.0f, 1.0f - e * (1 + e) * length(viN) / length(viT));
+				vec3 new_viT = a * viT;
+
+				mat3 I_1 = mat3(inverse(I));
+				mat3 K = mat3(1.0f / mass) - GetMatrixProduct(Rri) * mat3(inverse(I)) * GetMatrixProduct(Rri);
+				vec3 j = inverse(K) * (new_viN + new_viT - vi);
+
+				v += j / mass;
+				w += mat3(inverse(I)) * cross(Rri, j);
+
+				//return true;
+
+			}
+
+		}
+
+		return isHit;
 
 	}
 
