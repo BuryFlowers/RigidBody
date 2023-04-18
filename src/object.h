@@ -3,10 +3,11 @@
 #define OBJECT
 
 #define epsilon 1e-1f
-#define elasticity 0.1f
+#define elasticity 0.3f
 //#define AVERAGE_INTERSECTION_CHECK
 
 #include <iostream>
+#include <algorithm>
 #include <vector>
 #include <map>
 #include <glm/glm.hpp>
@@ -137,7 +138,7 @@ public:
 	bool CheckIntersection(Object o)
 	{
 	
-#ifdef AVERAGE_INTERSECTION_CHECK
+#ifdef AVERAGE
 
 		std::vector<vec3> pointsInside;
 		pointsInside.clear();
@@ -214,12 +215,13 @@ public:
 
 			}
 
+			vec3 tmp = (epsilon - distance) * normal;
 			x += (epsilon - distance) * normal;
 
 			vec3 vi = v + cross(w, Rri);
 			if (dot(vi, normal) < 0) {
 
-				printf("[Debug]intersected!\n");
+				if (length(tmp) > 0.5f) printf("[Debug]intersected, deltaX: %.2lf\n", length(tmp));
 
 				vec3 viN = dot(vi, normal) * normal;
 				vec3 viT = vi - viN;
@@ -245,21 +247,19 @@ public:
 
 #endif
 
-#ifdef AVERAGE_INTERSECTION_CHECK
+#ifndef NORMAL_RAY
 
+		// this function will return the result whether intersection occured!
 		bool isHit = false;
-		vec3 delta_x = vec3(0);
-		vec3 delta_v = vec3(0);
-		vec3 delta_w = vec3(0);
 		int pointsN = points.size();
 		for (int i = 0; i < pointsN; i++) 
 		{
 
 			vec3 Rri = GetRotation() * vec4((points[i] - c), 0.0f);
 			vec3 point = x + Rri;
-			bool isInside = true;
+			bool isInside = false;
 			float distance;
-			vec3 normal;
+			vec3 normal = vec3(0);
 			int triangleN = o.GetSize();
 			for (int j = 0; j < triangleN; j++) 
 			{
@@ -268,23 +268,37 @@ public:
 				// get the triangle's plane normal
 				mat4 model = o.GetModel();
 ;				vec3 t_normal = normal_queue[T.N_A()] + normal_queue[T.N_B()] + normal_queue[T.N_C()];
-				vec3 p = o.GetModel() * vec4(position_queue[T.P_A()], 1.0f);
 				t_normal = vec4(normalize(t_normal), 0.0f) * inverse(model);
+				vec3 P0 = model * vec4(position_queue[T.P_A()], 1.0f);
+				vec3 P1 = model * vec4(position_queue[T.P_B()], 1.0f);
+				vec3 P2 = model * vec4(position_queue[T.P_C()], 1.0f);
 
-				float d = dot((point - p), t_normal);
-				// if the point intersects with the object
+				// straight distance towards the plane
+				float d = dot((point - P0), t_normal);
 				if (d < epsilon)
 				{
 
-					if (j == 0) distance = d, normal = t_normal;
-					else if (distance < d) distance = d, normal = t_normal;
+					if (normal == vec3(0) || (normal != vec3(0) && distance < d)) distance = d, normal = t_normal;
 
 				}
-				else
+
+				// use the ray to check if this point is inside the object
+				vec3 ray = vec3(0, 1.0f, 0);
+				float t = -1.0f;
+				if (dot(ray, t_normal) != 0.0f) t = dot(P0 - point, t_normal) / dot(ray, t_normal);
+
+				if (t >= -epsilon)
 				{
 
-					isInside = false;
-					break;
+					vec3 Pt = point + t * ray;
+					vec3 t1 = cross(P0 - Pt, P1 - Pt);
+					vec3 t2 = cross(P1 - Pt, P2 - Pt);
+					if (dot(t1, t2) < 0) continue;
+					vec3 t3 = cross(P2 - Pt, P0 - Pt);
+					if (dot(t1, t3) < 0 || dot(t2, t3) < 0) continue;
+
+					// if the number of  intersection point  is even, then it is outside the object, otherwise it is inside the object
+					isInside = !isInside;
 
 				}
 
@@ -293,18 +307,14 @@ public:
 			if (isInside)
 			{
 
-				if (this->mass >= 2.0f && o.mass >= 2.0f)
-				{
-
-					printf("[Debug]bunny attacked!\n");
-
-				}
+				// apply x and v and w according to the distance and plane normal
 				isHit = true;
+				vec3 tmp = (epsilon - distance) * normal;
 				x += (epsilon - distance) * normal;
 				vec3 vi = v + cross(w, Rri);
 				if (dot(vi, normal) <= 0) {
 
-					//printf("[Debug]intersected!\n");
+					//printf("[Debug]intersected, deltaX: %.2lf\n", length(tmp));
 
 					vec3 viN = dot(vi, normal) * normal;
 					vec3 viT = vi - viN;
@@ -331,6 +341,7 @@ public:
 		return isHit;
 
 #endif
+#ifdef DCD
 
 		if (!this->GetGravity()) return false;
 		std::map<int, float> m_distance;
@@ -381,10 +392,10 @@ public:
 						vec3 t3 = cross(X2 - Xt, X0 - Xt);
 						if (dot(t1, t3) < 0 || dot(t2, t3) < 0) continue;
 
-						isHit = true;
-						if (dot((Xa - X0), t_normal) < dot((Xb - X0), t_normal))
+						if (dot((Xa - X0), t_normal) < epsilon)
 						{
 							
+							isHit = true;
 							if (m_distance.count(p[j]) == 0)
 							{
 
@@ -401,9 +412,10 @@ public:
 							}
 
 						}
-						else
+						else if(dot((Xb - X0), t_normal) < epsilon)
 						{
 
+							isHit = true;
 							if (m_distance.count(p[(j + 1) % 3]) == 0)
 							{
 
@@ -430,20 +442,36 @@ public:
 
 		}
 
+		std::vector<Points_info> points_info;
+
+		points_info.clear();
 		auto i = m_distance.begin();
 		auto j = m_normal.begin();
 		for (; i != m_distance.end(); i++, j++)
 		{
 
-			int p = i->first;
-			vec3 Rri = GetRotation() * vec4(position_queue[p] - c, 0.0f);
-			float distance = i->second;
-			vec3 normal = j->second;
-			x -= distance * normal;
-			vec3 vi = v + cross(w, Rri);
-			if (dot(vi, normal) <= 0) {
+			Points_info tmp;
+			tmp.id = i->first;
+			tmp.distance = i->second;
+			tmp.normal = j->second;
+			points_info.push_back(tmp);
 
-				//printf("[Debug]intersected!\n");
+		}
+
+		std::sort(points_info.begin(), points_info.end(), PointInfoCmp);
+
+		int pointsInfoN = points_info.size();
+		for (int i = 0; i < pointsInfoN; i++)
+		{
+
+			int p = points_info[i].id;
+			vec3 Rri = GetRotation() * vec4(position_queue[p] - c, 0.0f);
+			float distance = points_info[i].distance;
+			vec3 normal = points_info[i].normal;
+			x -= distance * normal;
+			if (fabs(distance) > 0.5f) printf("[Debug]distance: %.2lf\n", distance);
+			vec3 vi = v + cross(w, Rri);
+			if (dot(vi, normal) < 0) {
 
 				vec3 viN = dot(vi, normal) * normal;
 				vec3 viT = vi - viN;
@@ -468,6 +496,155 @@ public:
 		}
 
 		return isHit;
+
+#endif // !DCD
+
+#ifdef AVERAGE_RAY
+
+		std::vector<vec3> pointsInside;
+		pointsInside.clear();
+		vec3 delta_x = vec3(0);
+		vec3 delta_v = vec3(0);
+		vec3 delta_w = vec3(0);
+		int pointsN = points.size();
+		for (int i = 0; i < pointsN; i++)
+		{
+
+			vec3 Rri = GetRotation() * vec4((points[i] - c), 0.0f);
+			vec3 point = x + Rri;
+			bool isInside = false;
+			int triangleN = o.GetSize();
+			for (int j = 0; j < triangleN; j++)
+			{
+
+				triangle T = o.GetTriangle(j);
+				// get the triangle's plane normal
+				mat4 model = o.GetModel();
+				vec3 t_normal = normal_queue[T.N_A()] + normal_queue[T.N_B()] + normal_queue[T.N_C()];
+				t_normal = transpose(inverse(model)) * vec4(normalize(t_normal), 0.0f);
+				vec3 P0 = model * vec4(position_queue[T.P_A()], 1.0f);
+				vec3 P1 = model * vec4(position_queue[T.P_B()], 1.0f);
+				vec3 P2 = model * vec4(position_queue[T.P_C()], 1.0f);
+
+				vec3 ray = vec3(0, 1.0f, 0);
+				float t = -1.0f;
+				if (dot(ray, t_normal) != 0.0f) t = dot(P0 - point, t_normal) / dot(ray, t_normal);
+
+				if (t >= -epsilon)
+				{
+
+					vec3 Pt = point + t * ray;
+					vec3 t1 = cross(P0 - Pt, P1 - Pt);
+					vec3 t2 = cross(P1 - Pt, P2 - Pt);
+					if (dot(t1, t2) < 0) continue;
+					vec3 t3 = cross(P2 - Pt, P0 - Pt);
+					if (dot(t1, t3) < 0 || dot(t2, t3) < 0) continue;
+
+					isInside = !isInside;
+
+				}
+
+			}
+
+			if (isInside) pointsInside.push_back(points[i]);
+
+		}
+
+		//printf("[Debug]points inside£º%d\n", pointsInside.size());
+
+		if (!pointsInside.empty())
+		{
+
+			vec3 point = vec3(0);
+			int pointsInsideN = pointsInside.size();
+			for (int i = 0; i < pointsInsideN; i++) point += pointsInside[i];
+			point /= pointsInsideN;
+			vec3 Rri = GetRotation() * vec4((point - c), 0.0f);
+			point = x + Rri;
+
+			float distance = 0;
+			vec3 normal = vec3(0);
+			bool isInside = false;
+			int triangleN = o.GetSize();
+			for (int i = 0; i < triangleN; i++)
+			{
+
+				triangle T = o.GetTriangle(i);
+				// get the triangle's plane normal
+				mat4 model = o.GetModel();
+				vec3 t_normal = normal_queue[T.N_A()] + normal_queue[T.N_B()] + normal_queue[T.N_C()];
+				t_normal = transpose(inverse(model)) * vec4(normalize(t_normal), 0.0f);
+				vec3 P0 = model * vec4(position_queue[T.P_A()], 1.0f);
+				vec3 P1 = model * vec4(position_queue[T.P_B()], 1.0f);
+				vec3 P2 = model * vec4(position_queue[T.P_C()], 1.0f);
+
+				float d = dot((point - P0), t_normal);
+				if (d < epsilon)
+				{
+
+					if (normal == vec3(0) || (normal != vec3(0) && d > distance))
+					{
+
+						distance = d;
+						normal = t_normal;
+
+					}
+
+				}
+
+				vec3 ray = vec3(0, 1.0f, 0);
+				float t = -1.0f;
+				if (dot(ray, t_normal) != 0.0f) t = dot(point - P0, t_normal) / dot(ray, t_normal);
+
+				if (t >= -epsilon)
+				{
+
+					vec3 Pt = point + t * ray;
+					vec3 t1 = cross(P0 - Pt, P1 - Pt);
+					vec3 t2 = cross(P1 - Pt, P2 - Pt);
+					if (dot(t1, t2) < 0) continue;
+					vec3 t3 = cross(P2 - Pt, P0 - Pt);
+					if (dot(t1, t3) < 0 || dot(t2, t3) < 0) continue;
+
+					isInside = !isInside;
+
+				}
+
+			}
+
+			if (!isInside) return false;
+
+			vec3 tmp = (epsilon - distance) * normal;
+			x += (epsilon - distance) * normal;
+			vec3 vi = v + cross(w, Rri);
+			if (dot(vi, normal) < 0) {
+
+				if (length(tmp) > 0.5f) printf("[Debug]intersected, deltaX: %.2lf\n", length(tmp));
+
+				vec3 viN = dot(vi, normal) * normal;
+				vec3 viT = vi - viN;
+
+				vec3 new_viN = -elasticity * viN;
+				float a = max(0.0f, 1.0f - elasticity * (1 + elasticity) * length(viN) / length(viT));
+				vec3 new_viT = a * viT;
+
+				mat3 I_1 = mat3(inverse(I));
+				mat3 K = mat3(1.0f / mass) - GetMatrixProduct(Rri) * mat3(inverse(I)) * GetMatrixProduct(Rri);
+				vec3 j = inverse(K) * (new_viN + new_viT - vi);
+
+				v += j / mass;
+				w += mat3(inverse(I)) * cross(Rri, j);
+
+				return true;
+
+			}
+
+		}
+
+		return false;
+
+#endif // !RAY
+
 
 	}
 
@@ -506,6 +683,22 @@ public:
 
 protected:
 private:
+
+	struct Points_info
+	{
+
+		int id;
+		float distance;
+		vec3 normal;
+
+	};
+
+	static bool PointInfoCmp(const Points_info& a, const Points_info& b)
+	{
+
+		return a.distance < b.distance;
+
+	}
 
 	void GetCenter() 
 	{
